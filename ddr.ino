@@ -14,7 +14,7 @@
 
 #define SENSOR_COUNT 1
 // Average analog readings over this many readings, to smooth it out.
-#define SMOOTH_CYCLES 100
+#define SMOOTH_CYCLES 50
 
 // Analog pins for each sensor
 const byte sensorInPins[SENSOR_COUNT] = {10};
@@ -46,7 +46,7 @@ void setup() {
     sensorReadings[n] = 0;
     sensorLastDown[n] = false;
     // TODO: Runtime calibration
-    sensorThresholds[n] = 150;
+    sensorThresholds[n] = 200;
     smoothReadings[n] = new RunningAverage(SMOOTH_CYCLES);
   }
 
@@ -77,7 +77,9 @@ void loopSensor(int sensorId) {
       
       CompositeSerial.print("Sensor ");
       CompositeSerial.print(sensorId);
-      CompositeSerial.print(": Press\n");
+      CompositeSerial.print(": PRESS; Reading smooth: ");
+      CompositeSerial.print(smoothAverage);
+      CompositeSerial.print("\n");
     }
     sensorLastDown[sensorId] = true;
 
@@ -87,15 +89,11 @@ void loopSensor(int sensorId) {
 
       CompositeSerial.print("Sensor ");
       CompositeSerial.print(sensorId);
-      CompositeSerial.print(": Release\n");
+      CompositeSerial.print(": RELEASE; Reading smooth: ");
+      CompositeSerial.print(smoothAverage);
+      CompositeSerial.print("\n");
     }
     sensorLastDown[sensorId] = false;
   }
-
-  CompositeSerial.print("Sensor ");
-  CompositeSerial.print(sensorId);
-  CompositeSerial.print(", Smooth reading: ");
-  CompositeSerial.print(smoothAverage);
-  CompositeSerial.print(")\n");
 }
 
