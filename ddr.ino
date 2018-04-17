@@ -2,94 +2,100 @@
   ika DDR pad test
 */
 
+// Lib
+// ===
+
+#include <USBComposite.h>
+#include "RunningAverage.h"
+
+
 // Constants
 // ===
 
-const int analogInPin = 10;
-
+#define SENSOR_COUNT 1
 // Average analog readings over this many readings, to smooth it out.
-const int numReadings = 10;
+#define SMOOTH_CYCLES 100
 
-// For initial sensor calibration, how many cycles across which to average.
-const unsigned int setupCyclesTotal = 65535;
+// Analog pins for each sensor
+const byte sensorInPins[SENSOR_COUNT] = {10};
+
+// Keycodes to emit when respective sensors are pressed
+const byte sensorKeycodes[SENSOR_COUNT] = {88}; // X
 
 
 // Variables
 // ===
 
-int setupCycles = 0;
+// Threshold after which KeyDown event is sent.
+// TODO: Runtime calibration
+int sensorThresholds[SENSOR_COUNT];
 
-// Threshold after which KeyDown event is sent. Calibrated at setup.
-float sensorThreshold = 0;
-// Set once setup calibration is complete.
-bool setupComplete = false;
+int sensorReadings[SENSOR_COUNT];
 
-int sensorValue = 0;
+// Smooth over several readings to compensate for noise.
+RunningAverage *smoothReadings [SENSOR_COUNT];
 
+// Store if sensors were down the last reading cycle,
+// to allow us to send key Press and Release events.
+bool sensorLastDown[SENSOR_COUNT];
 
-// TODO
-//void setup() {
-//  USBHID_begin_with_serial(HID_KEYBOARD);
-//  Keyboard.begin(); // useful to detect host capslock state and LEDs
-//  delay(1000);
-//}
-//
-//void loop() {
-//  Keyboard.println("Hello world");
-//  delay(10000);
-//}
 
 void setup() {
-  pinMode(analogInPin, INPUT_ANALOG);
+  for (byte n = 0; n < SENSOR_COUNT; n++) {
+    pinMode(sensorInPins[n], INPUT_ANALOG);
+    sensorReadings[n] = 0;
+    sensorLastDown[n] = false;
+    // TODO: Runtime calibration
+    sensorThresholds[n] = 150;
+    smoothReadings[n] = new RunningAverage(SMOOTH_CYCLES);
+  }
 
   // Ignored by Maple. But needed by boards using Hardware serial via a USB to Serial Adaptor
   Serial.begin(115200);
-}
 
-// Setup tasks requiring multiple cycles, e.g. sensor calibration.
-void setupLoop() {
-  float sensorRA = 0;
-  
-  setupCycles += 1;
-  sensorValue = analogRead(analogInPin);
-  sensorThreshold = (sensorThreshold * (setupCycles - 1) + sensorValue)/(1.0*setupCycles);
-  
-  Serial.print("setupLoop calibration ");
-  Serial.print(setupCycles);
-  Serial.print("; reading: ");
-  Serial.print(sensorValue);
-  Serial.print("; threshold: ");
-  Serial.print(sensorThreshold);
-  Serial.print("\n");
+  USBHID_begin_with_serial(HID_KEYBOARD);
+  Keyboard.begin(); // useful to detect host capslock state and LEDs
 
-  if (setupCycles < setupCyclesTotal) {
-    return;
-  }
-
-  // Finalize
-  setupComplete = true;
-  Serial.print("Setup completed. Sensor threshold: ");
-  Serial.print(sensorThreshold);
-  Serial.print("\n");
+  // Delay because I dunno
+  delay(1000);
 }
 
 void loop() {
-  if (setupComplete != true) {
-    setupLoop();
-//    return;
+  for (byte n = 0; n < SENSOR_COUNT; n++) {
+    loopSensor(n);
   }
-
-  sensorValue = analogRead(analogInPin);
-
-  if (sensorValue > sensorThreshold) {
-    Serial.print("sensor GET! value was: " );
-    Serial.print(sensorValue);
-    Serial.print(" (threshold: ");
-    Serial.print(sensorThreshold);
-    Serial.print(")\n");
-  }
-  
-  // delay in between reads for stability
-  // XXX: Is this necessary?
-//  delay(1);
 }
+
+void loopSensor(int sensorId) {
+  int sensorValue = analogRead( sensorInPins[sensorId] );
+  smoothReadings[sensorId]->addValue(sensorValue);
+  int smoothAverage = int(smoothReadings[sensorId]->getAverage());
+
+  if (smoothAverage > sensorThresholds[sensorId]) {
+    if (sensorLastDown[sensorId] != true) {
+      Keyboard.press(sensorKeycodes[sensorId]);
+      
+      CompositeSerial.print("Sensor ");
+      CompositeSerial.print(sensorId);
+      CompositeSerial.print(": Press\n");
+    }
+    sensorLastDown[sensorId] = true;
+
+  } else {
+    if (sensorLastDown[sensorId] != false) {
+      Keyboard.release(sensorKeycodes[sensorId]);
+
+      CompositeSerial.print("Sensor ");
+      CompositeSerial.print(sensorId);
+      CompositeSerial.print(": Release\n");
+    }
+    sensorLastDown[sensorId] = false;
+  }
+
+  CompositeSerial.print("Sensor ");
+  CompositeSerial.print(sensorId);
+  CompositeSerial.print(", Smooth reading: ");
+  CompositeSerial.print(smoothAverage);
+  CompositeSerial.print(")\n");
+}
+
