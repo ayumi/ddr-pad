@@ -6,6 +6,7 @@
 // ===
 
 #include <USBComposite.h>
+#include "HX711.h"
 #include "RunningAverage.h"
 
 
@@ -14,13 +15,13 @@
 
 #define SENSOR_COUNT 1
 // Average analog readings over this many readings, to smooth it out.
-#define SMOOTH_CYCLES 50
+#define SMOOTH_CYCLES 40
 
 // Analog pins for each sensor
 const byte sensorInPins[SENSOR_COUNT] = {10};
 
 // Keycodes to emit when respective sensors are pressed
-const byte sensorKeycodes[SENSOR_COUNT] = {88}; // X
+const byte sensorKeycodes[SENSOR_COUNT] = {216}; // Left
 
 
 // Variables
@@ -46,7 +47,7 @@ void setup() {
     sensorReadings[n] = 0;
     sensorLastDown[n] = false;
     // TODO: Runtime calibration
-    sensorThresholds[n] = 200;
+    sensorThresholds[n] = 220;
     smoothReadings[n] = new RunningAverage(SMOOTH_CYCLES);
   }
 
