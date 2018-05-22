@@ -10,16 +10,12 @@
 
 #include <USBComposite.h>
 #include "HX711.h"
-#include "RunningAverage.h"
 
 
 // Constants
 // ===
 
 #define SENSOR_COUNT 4
-
-// Remember analog readings over this many readings, to calculate rate of change.
-#define SENSOR_DERIVATIVE_READINGS 3
 
 // Analog Input pins receiving the HX711 readings. 1 per step.
 const byte sensorInPins[SENSOR_COUNT] = {4, 5, 6, 7};
@@ -31,18 +27,11 @@ const byte sensorOutPins[SENSOR_COUNT] = {8, 9, 10, 11};
 // Right: 215, Left: 216, Down: 217, Up: 218
 const byte sensorKeycodes[SENSOR_COUNT] = {215, 216, 217, 218}; // R L D U
 
-// Derivative strategy measures rate of change of sensors instead of single values.
-// It's not perfected yet, so only turn it on as a fallback!
-const bool sensorShouldUseDerivative[SENSOR_COUNT] = {false, false, false, false}; // R L D U
-
 // Calibration factor for sensor to measure accurately 1 kg.
 const float sensorCalibrations[SENSOR_COUNT] = {-22000, -22000, -22000, -22000};
 
-// Threshold after which key event is sent
+// Threshold after which key event is sent.
 const float sensorThresholds[SENSOR_COUNT] = {3.0, 3.0, 3.0, 3.0};
-
-// Derivative threshold after which key event is sent.
-const float sensorDerivativeThresholds[SENSOR_COUNT] = {1.0, 1.0, 1.0, 1.0};
 
 
 // Variables
@@ -52,13 +41,13 @@ float sensorReadings[SENSOR_COUNT];
 
 HX711 *sensors [SENSOR_COUNT];
 
-// Remember previous readings to compensate for sticky sensor readings.
-RunningAverage *sensorChangeHistory [SENSOR_COUNT];
-
 // Store if sensors were down the last reading cycle,
 // to allow us to send key Press and Release events.
 bool sensorLastDown[SENSOR_COUNT];
 
+
+// App
+// ===
 
 void setup() {
   // Delay because I dunno
@@ -78,9 +67,10 @@ void setup() {
     sensorReadings[n] = 0;
     sensorLastDown[n] = false;
     sensors[n] = new HX711(sensorInPins[n], sensorOutPins[n], 128);
-    
+
+     // Reset scale to 0
     sensors[n]->set_scale();
-    sensors[n]->tare(); // Reset scale to 0
+    sensors[n]->tare();
 
     // Get baseline reading
     long zero_factor = sensors[n]->read_average();
@@ -88,8 +78,6 @@ void setup() {
     CompositeSerial.println(zero_factor);
     
     sensors[n]->set_scale(sensorCalibrations[n]);
- 
-    sensorChangeHistory[n] = new RunningAverage(SENSOR_DERIVATIVE_READINGS);
   }
 
   // Delay because I dunno
@@ -107,28 +95,16 @@ void loop() {
 
 void loopSensor(int sensorId) {
   float rawValue = sensors[sensorId]->get_units();
-  float previousValue = sensorReadings[sensorId];
-  float change = rawValue - previousValue;
   sensorReadings[sensorId] = rawValue;
 
-  sensorChangeHistory[sensorId]->addValue(change);
-  float derivative = sensorChangeHistory[sensorId]->getAverage();
-
+  // Serial debug output is super helpful when things don't work.
   CompositeSerial.print("S");
   CompositeSerial.print(sensorId);
   CompositeSerial.print(": ");
   CompositeSerial.print(rawValue);
-  CompositeSerial.print("(d ");
-  CompositeSerial.print(derivative);
   CompositeSerial.print("); ");
 
-  bool pressed = false;
-  if (sensorShouldUseDerivative[sensorId]) {
-    pressed = (derivative > sensorDerivativeThresholds[sensorId]);
-  } else {
-    pressed = (rawValue > sensorThresholds[sensorId]);
-  }
-  if (pressed) {
+  if (rawValue > sensorThresholds[sensorId]) {
     if (sensorLastDown[sensorId] != true) {
       Keyboard.press(sensorKeycodes[sensorId]);
       
@@ -139,16 +115,7 @@ void loopSensor(int sensorId) {
       CompositeSerial.print("\n");
     }
     sensorLastDown[sensorId] = true;
-    return;
-  }
-
-  bool unpressed = false;
-  if (sensorShouldUseDerivative[sensorId]) {
-    unpressed = (derivative < (-1 * sensorDerivativeThresholds[sensorId]));
   } else {
-    unpressed = !pressed;
-  }
-  if (unpressed) {
     if (sensorLastDown[sensorId] != false) {
       Keyboard.release(sensorKeycodes[sensorId]);
 
@@ -159,7 +126,6 @@ void loopSensor(int sensorId) {
       CompositeSerial.print("\n");
     }
     sensorLastDown[sensorId] = false;
-    return;
   }
 }
 
